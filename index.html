@@ -1,0 +1,1113 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AZ - Motor Spare </title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-database-compat.js"></script>
+    
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="top-bar">
+                <div class="logo">
+                    <img src="logo.png" alt="AutoParts Hub Logo">
+                    <h4>Motor Spare</h4>
+                </div>
+                <div class="search-bar">
+                    <form id="searchForm">
+                        <input type="text" id="searchInput" placeholder="Search for auto parts...">
+                        <button type="submit" class="btn"><i class="fas fa-search"></i></button>
+                    </form>
+                </div>
+                <div class="user-actions">
+                    <a href="#" id="cartLink"><i class="fas fa-shopping-cart"></i> 
+                        <span class="cart-count" id="cartCount">0</span>
+                    </a>
+                </div>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="#" class="nav-link" data-page="home">Home</a></li>
+                    <li><a href="#" class="nav-link" data-page="products">All Parts</a></li>
+                    <li><a href="#" class="nav-link" data-page="catalog">Performance Parts</a></li>
+                    <li><a href="#" class="nav-link" data-page="products" data-category="Brakes">Brakes</a></li>
+                    <li><a href="#" class="nav-link" data-page="products" data-category="Engine">Engine</a></li>
+                    <li><a href="#" class="nav-link" data-page="products" data-category="Lighting">Lighting</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container" id="mainContent">
+        <!-- Content will be dynamically loaded here -->
+    </main>
+
+    <footer>
+        <div class="container">
+            <div class="footer-sections">
+                <div class="footer-section">
+                    <h3>Customer Service</h3>
+                    <ul>
+                        <li><a href="#">Contact Us</a></li>
+                        <li><a href="#">FAQs</a></li>
+                        <li><a href="#">Shipping Policy</a></li>
+                        <li><a href="#">Returns & Refunds</a></li>
+                    </ul>
+                    
+                    <h3 style="margin-top: 20px;">About Us</h3>
+                    <ul>
+                        <li><a href="#">Our Story</a></li>
+                        <li><a href="#">Careers</a></li>
+                        <li><a href="#">Privacy Policy</a></li>
+                        <li><a href="#">Terms & Conditions</a></li>
+                    </ul>
+                </div>
+                
+                <div class="footer-section">
+                    <h3>Follow Us</h3>
+                    <div class="social-icons">
+                        <a href="#"><i class="fab fa-facebook"></i></a>
+                        <a href="#"><i class="fab fa-twitter"></i></a>
+                        <a href="#"><i class="fab fa-instagram"></i></a>
+                        <a href="#"><i class="fab fa-youtube"></i></a>
+                    </div>
+                </div>
+            </div>
+            <div class="copyright">
+                <p>&copy; <span id="currentYear"></span> AZ MotorSpare. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCtH6EO1LrN1Xm4N9j9XTnRGi5cfdSphkA",
+            authDomain: "preordersrequest.firebaseapp.com",
+            databaseURL: "https://preordersrequest-default-rtdb.firebaseio.com",
+            projectId: "preordersrequest",
+            storageBucket: "preordersrequest.appspot.com",
+            messagingSenderId: "1099488620123",
+            appId: "1:1099488620123:web:5c9ed88aa9a12e6f4dd97e",
+            measurementId: "G-9F4C3YH54Q"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        // App state
+        let state = {
+            cart: JSON.parse(localStorage.getItem('cart')) || {},
+            currentPage: 'home',
+            currentCategory: null,
+            currentSearch: '',
+            currentProduct: null,
+            orderDetails: null,
+            paymentMethod: 'bank_transfer',
+            products: [],
+            categories: ['Brakes', 'Engine', 'Lighting', 'Exterior'],
+            freeShippingThreshold: 100,
+            shippingCost: 5.99,
+            performanceParts: [],
+            topSellingProducts: [],
+            paymentSlip: null
+        };
+
+        // DOM elements
+        const mainContent = document.getElementById('mainContent');
+        const cartCount = document.getElementById('cartCount');
+        const cartLink = document.getElementById('cartLink');
+        const searchForm = document.getElementById('searchForm');
+        const searchInput = document.getElementById('searchInput');
+        const navLinks = document.querySelectorAll('.nav-link');
+        const currentYear = document.getElementById('currentYear');
+
+        // Initialize the app
+        function init() {
+            // Set current year in footer
+            currentYear.textContent = new Date().getFullYear();
+            
+            // Load products from Firebase
+            loadProducts();
+            
+            // Add event listeners for navigation
+            navLinks.forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const page = link.dataset.page;
+                    const category = link.dataset.category;
+                    
+                    if (category) {
+                        state.currentCategory = category;
+                        state.currentSearch = '';
+                        searchInput.value = '';
+                    }
+                    
+                    loadPage(page);
+                });
+            });
+
+            cartLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                loadPage('cart');
+            });
+
+            searchForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                state.currentSearch = searchInput.value;
+                state.currentCategory = null;
+                loadPage('products');
+            });
+
+            // Load initial page
+            loadPage(state.currentPage);
+        }
+
+        // Calculate shipping cost based on order total
+        function calculateShipping(subtotal) {
+            if (subtotal >= state.freeShippingThreshold) {
+                return 0;
+            }
+            return state.shippingCost;
+        }
+
+        // Calculate discount percentage
+        function calculateDiscount(originalPrice, currentPrice) {
+            if (!originalPrice || originalPrice <= currentPrice) return 0;
+            return Math.round(((originalPrice - currentPrice) / originalPrice) * 100);
+        }
+
+        // Load products from Firebase
+        function loadProducts() {
+            database.ref('products').on('value', (snapshot) => {
+                const productsData = snapshot.val();
+                if (productsData) {
+                    // Convert object to array
+                    state.products = Object.keys(productsData).map(key => {
+                        return { 
+                            id: key, 
+                            ...productsData[key],
+                            stock: productsData[key].stock || 0
+                        };
+                    });
+                    
+                    // Load performance parts from regular products
+                    state.performanceParts = state.products.filter(
+                        product => product.category === 'PerformanceParts'
+                    );
+                    
+                    // Get top selling products (sort by soldCount if available, otherwise by featured)
+                    state.topSellingProducts = [...state.products]
+                        .sort((a, b) => {
+                            const aSold = a.soldCount || 0;
+                            const bSold = b.soldCount || 0;
+                            return bSold - aSold;
+                        })
+                        .slice(0, 8); // Show top 8
+                    
+                    loadPage(state.currentPage);
+                }
+            });
+        }
+
+        // Load page content
+        function loadPage(page) {
+            state.currentPage = page;
+            updateActiveNavLink();
+            
+            switch(page) {
+                case 'home':
+                    renderHomePage();
+                    break;
+                case 'products':
+                    renderProductsPage();
+                    break;
+                case 'product':
+                    renderProductDetailPage();
+                    break;
+                case 'catalog':
+                    renderCatalogPage();
+                    break;
+                case 'cart':
+                    renderCartPage();
+                    break;
+                case 'checkout':
+                    renderCheckoutPage();
+                    break;
+                case 'order-confirmation':
+                    renderOrderConfirmationPage();
+                    break;
+                case 'pending-review':
+                    renderPendingReviewPage();
+                    break;
+                default:
+                    renderHomePage();
+            }
+        }
+
+        // Update active nav link
+        function updateActiveNavLink() {
+            navLinks.forEach(link => {
+                if (link.dataset.page === state.currentPage && 
+                    (!link.dataset.category || link.dataset.category === state.currentCategory)) {
+                    link.style.color = '#e63946';
+                    link.style.fontWeight = 'bold';
+                } else {
+                    link.style.color = '#fff';
+                    link.style.fontWeight = 'normal';
+                }
+            });
+        }
+
+        // Render home page
+        function renderHomePage() {
+            const featuredProducts = state.products.filter(product => product.featured);
+            
+            mainContent.innerHTML = `
+                <section class="banner">
+                    <div class="banner-content">
+                        <h2>Auto Parts Sale!</h2>
+                        <p>Quality parts at affordable prices</p>
+                        <a href="#" class="btn" id="shopNowBtn">Shop Now</a>
+                    </div>
+                </section>
+
+                <section class="categories">
+                    <h2>Shop by Category</h2>
+                    <div class="category-grid">
+                        ${state.categories.map(category => `
+                            <a href="#" class="category-item" data-page="products" data-category="${category}">
+                                <img src="${getCategoryImage(category)}" alt="${category}">
+                                <h3>${category}</h3>
+                            </a>
+                        `).join('')}
+                    </div>
+                </section>
+
+                <section class="top-selling">
+                    <h2>Top Selling Parts</h2>
+                    <div class="top-selling-grid">
+                        ${state.topSellingProducts.map(product => {
+                            const discount = calculateDiscount(product.original_price, product.price);
+                            return `
+                            <div class="top-selling-card">
+                                ${product.stock <= 0 ? `<span class="out-of-stock-badge">Out of Stock</span>` : ''}
+                                ${product.soldCount ? `<span class="sold-badge">${product.soldCount} Sold</span>` : ''}
+                                ${discount > 0 ? `<span class="discount-badge">${discount}% OFF</span>` : ''}
+                                ${product.stock <= 0 ? `<div class="out-of-stock-overlay">OUT OF STOCK</div>` : ''}
+                                <img src="${product.image}" alt="${product.name}">
+                                <h3>${product.name}</h3>
+                                <div class="item-code">Item Code: ${product.itemCode || 'N/A'}</div>
+                                <div class="price">
+                                    <span class="current-price">MVR${product.price.toFixed(2)}</span>
+                                    ${product.original_price ? `
+                                        <span class="original-price">MVR${product.original_price.toFixed(2)}</span>
+                                    ` : ''}
+                                </div>
+                                <div class="product-actions">
+                                    <button class="btn add-to-cart-btn" data-id="${product.id}" 
+                                        ${product.stock <= 0 ? 'disabled style="background-color: #cccccc; cursor: not-allowed;"' : ''}>
+                                        ${product.stock <= 0 ? 'Out of Stock' : 'Add to Cart'}
+                                    </button>
+                                    <button class="btn view-detail-btn" data-id="${product.id}">View Details</button>
+                                </div>
+                            </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </section>
+
+                <section class="featured-products">
+                    <h2>Featured Auto Parts</h2>
+                    <div class="product-grid">
+                        ${featuredProducts.map(product => {
+                            const discount = calculateDiscount(product.original_price, product.price);
+                            return `
+                            <div class="product-card">
+                                ${product.stock <= 0 ? `<span class="out-of-stock-badge">Out of Stock</span>` : ''}
+                                ${product.soldCount ? `<span class="sold-badge">${product.soldCount} Sold</span>` : ''}
+                                ${discount > 0 ? `<span class="discount-badge">${discount}% OFF</span>` : ''}
+                                ${product.stock <= 0 ? `<div class="out-of-stock-overlay">OUT OF STOCK</div>` : ''}
+                                <img src="${product.image}" alt="${product.name}">
+                                <h3>${product.name}</h3>
+                                <div class="item-code">Item Code: ${product.itemCode || 'N/A'}</div>
+                                <div class="price">
+                                    <span class="current-price">MVR${product.price.toFixed(2)}</span>
+                                    ${product.original_price ? `
+                                        <span class="original-price">MVR${product.original_price.toFixed(2)}</span>
+                                    ` : ''}
+                                </div>
+                                <div class="product-actions">
+                                    <button class="btn add-to-cart-btn" data-id="${product.id}" 
+                                        ${product.stock <= 0 ? 'disabled style="background-color: #cccccc; cursor: not-allowed;"' : ''}>
+                                        ${product.stock <= 0 ? 'Out of Stock' : 'Add to Cart'}
+                                    </button>
+                                    <button class="btn view-detail-btn" data-id="${product.id}">View Details</button>
+                                </div>
+                            </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </section>
+            `;
+            
+            // Add event listeners
+            document.querySelectorAll('.category-item').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    state.currentCategory = item.dataset.category;
+                    state.currentSearch = '';
+                    searchInput.value = '';
+                    loadPage('products');
+                });
+            });
+            
+            document.querySelectorAll('.view-detail-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const productId = btn.dataset.id;
+                    viewProductDetail(productId);
+                });
+            });
+            
+            document.querySelectorAll('.add-to-cart-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const productId = btn.dataset.id;
+                    addToCart(productId);
+                    if (state.products.find(p => p.id === productId).stock > 0) {
+                        alert('Product added to cart!');
+                    }
+                });
+            });
+            
+            document.getElementById('shopNowBtn')?.addEventListener('click', (e) => {
+                e.preventDefault();
+                state.currentCategory = null;
+                state.currentSearch = '';
+                searchInput.value = '';
+                loadPage('products');
+            });
+        }
+
+        // Get appropriate image for category
+        function getCategoryImage(category) {
+            // Default placeholder image
+            let image = 'https://via.placeholder.com/300x200?text=' + category;
+            
+            // Map specific categories to their images
+            const categoryImages = {
+                'Brakes': 'Brakes.jpg',
+                'Engine': 'engine parts.jpg',
+                'Lighting': 'Lighting.jpg',
+                'Exterior': 'exterior.jpg'
+                
+            };
+            
+            if (categoryImages[category]) {
+                image = categoryImages[category];
+            }
+            
+            return image;
+        }
+
+        // Render products page
+        function renderProductsPage() {
+            let filteredProducts = [...state.products];
+            
+            if (state.currentCategory) {
+                filteredProducts = filteredProducts.filter(
+                    product => product.category === state.currentCategory
+                );
+            }
+            
+            if (state.currentSearch) {
+                const searchTerm = state.currentSearch.toLowerCase();
+                filteredProducts = filteredProducts.filter(
+                    product => product.name.toLowerCase().includes(searchTerm) || 
+                               (product.description && product.description.toLowerCase().includes(searchTerm))
+                );
+            }
+            
+            mainContent.innerHTML = `
+                <h1>${state.currentCategory ? state.currentCategory.charAt(0).toUpperCase() + state.currentCategory.slice(1) : 'Our Auto Parts'}</h1>
+
+                <div class="product-filters">
+                    <form id="filterForm">
+                        <input type="text" id="filterSearch" placeholder="Search auto parts..." 
+                               value="${state.currentSearch}">
+                        <select id="categoryFilter">
+                            <option value="">All Categories</option>
+                            ${state.categories.map(category => `
+                                <option value="${category}" ${state.currentCategory === category ? 'selected' : ''}>
+                                    ${category}
+                                </option>
+                            `).join('')}
+                        </select>
+                        <button type="submit" class="btn">Filter</button>
+                    </form>
+                </div>
+
+                <div class="product-listing">
+                    <div class="product-grid">
+                        ${filteredProducts.length > 0 ? 
+                            filteredProducts.map(product => {
+                                const discount = calculateDiscount(product.original_price, product.price);
+                                return `
+                                <div class="product-card">
+                                    ${product.stock <= 0 ? `<span class="out-of-stock-badge">Out of Stock</span>` : ''}
+                                    ${product.soldCount ? `<span class="sold-badge">${product.soldCount} Sold</span>` : ''}
+                                    ${discount > 0 ? `<span class="discount-badge">${discount}% OFF</span>` : ''}
+                                    ${product.stock <= 0 ? `<div class="out-of-stock-overlay">OUT OF STOCK</div>` : ''}
+                                    <img src="${product.image}" alt="${product.name}">
+                                    <h3>${product.name}</h3>
+                                    <div class="item-code">Item Code: ${product.itemCode || 'N/A'}</div>
+                                    <div class="price">
+                                        <span class="current-price">MVR${product.price.toFixed(2)}</span>
+                                        ${product.original_price ? `
+                                            <span class="original-price">MVR${product.original_price.toFixed(2)}</span>
+                                        ` : ''}
+                                    </div>
+                                    <div class="product-actions">
+                                        <button class="btn add-to-cart-btn" data-id="${product.id}" 
+                                            ${product.stock <= 0 ? 'disabled style="background-color: #cccccc; cursor: not-allowed;"' : ''}>
+                                            ${product.stock <= 0 ? 'Out of Stock' : 'Add to Cart'}
+                                        </button>
+                                        <button class="btn view-detail-btn" data-id="${product.id}">View Details</button>
+                                    </div>
+                                </div>
+                                `;
+                            }).join('') :
+                            '<p>No products found matching your criteria.</p>'
+                        }
+                    </div>
+                </div>
+            `;
+            
+            // Add event listeners
+            document.getElementById('filterForm')?.addEventListener('submit', (e) => {
+                e.preventDefault();
+                state.currentSearch = document.getElementById('filterSearch').value;
+                state.currentCategory = document.getElementById('categoryFilter').value;
+                loadPage('products');
+            });
+            
+            document.querySelectorAll('.view-detail-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const productId = btn.dataset.id;
+                    viewProductDetail(productId);
+                });
+            });
+            
+            document.querySelectorAll('.add-to-cart-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const productId = btn.dataset.id;
+                    addToCart(productId);
+                    if (state.products.find(p => p.id === productId).stock > 0) {
+                        alert('Product added to cart!');
+                    }
+                });
+            });
+        }
+
+        // View product detail
+        function viewProductDetail(productId) {
+            const product = state.products.find(p => p.id === productId);
+            if (!product) return;
+            
+            state.currentProduct = product;
+            loadPage('product');
+        }
+
+        // Render product detail page
+        function renderProductDetailPage() {
+            if (!state.currentProduct) {
+                loadPage('products');
+                return;
+            }
+            
+            const product = state.currentProduct;
+            const discount = calculateDiscount(product.original_price, product.price);
+            
+            mainContent.innerHTML = `
+                <div class="product-detail">
+                    <div class="product-image">
+                        <img src="${product.image}" alt="${product.name}">
+                    </div>
+                    <div class="product-info">
+                        <h1>${product.name}</h1>
+                        <div class="item-code">Item Code: ${product.itemCode || 'N/A'}</div>
+                        ${product.soldCount ? `<div style="margin-bottom: 10px;"><span class="sold-badge">${product.soldCount} Sold</span></div>` : ''}
+                        ${discount > 0 ? `<div style="margin-bottom: 10px;"><span class="discount-badge">${discount}% OFF</span></div>` : ''}
+                        ${product.stock <= 0 ? `<div style="color: #f44336; font-weight: bold; margin: 10px 0;">This item is currently out of stock</div>` : ''}
+                        <div class="product-price">
+                            <span>MVR${product.price.toFixed(2)}</span>
+                            ${product.original_price ? `
+                                <span class="original-price">MVR${product.original_price.toFixed(2)}</span>
+                            ` : ''}
+                        </div>
+                        <div class="product-description">
+                            <p>${product.description || 'No description available.'}</p>
+                        </div>
+                        <form id="addToCartForm">
+                            ${product.stock > 0 ? `
+                            <div class="quantity-selector">
+                                <label for="quantity">Quantity:</label>
+                                <input type="number" name="quantity" id="quantity" value="1" min="1" max="${product.stock}">
+                                <span style="font-size: 12px; color: #666;">${product.stock} available</span>
+                            </div>
+                            <button type="submit" class="btn">Add to Cart</button>
+                            ` : `
+                            <button type="button" class="btn" disabled style="background-color: #cccccc; cursor: not-allowed;">Out of Stock</button>
+                            `}
+                        </form>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('addToCartForm')?.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const quantity = parseInt(document.getElementById('quantity').value) || 1;
+                addToCart(product.id, quantity);
+                alert(`${product.name} has been added to your cart!`);
+            });
+        }
+
+        // Render catalog page with performance parts
+        function renderCatalogPage() {
+            mainContent.innerHTML = `
+                <h1>Performance Parts</h1>
+                
+                <section class="catalog-section">
+                    <h2>Upgrade Your Vehicle</h2>
+                    <div class="catalog-grid">
+                        ${state.performanceParts.map(part => {
+                            const discount = calculateDiscount(part.original_price, part.price);
+                            return `
+                            <div class="catalog-item">
+                                ${part.stock <= 0 ? `<span class="out-of-stock-badge">Out of Stock</span>` : ''}
+                                ${part.soldCount ? `<span class="sold-badge">${part.soldCount} Sold</span>` : ''}
+                                ${discount > 0 ? `<span class="discount-badge">${discount}% OFF</span>` : ''}
+                                ${part.stock <= 0 ? `<div class="out-of-stock-overlay">OUT OF STOCK</div>` : ''}
+                                <img src="${part.image}" alt="${part.name}">
+                                <h3>${part.name}</h3>
+                                <div class="item-code">Item Code: ${part.itemCode || 'N/A'}</div>
+                                <div class="price">
+                                    <span class="current-price">MVR${part.price.toFixed(2)}</span>
+                                    ${part.original_price ? `
+                                        <span class="original-price">MVR${part.original_price.toFixed(2)}</span>
+                                    ` : ''}
+                                </div>
+                                <div class="catalog-actions">
+                                    <button class="btn add-to-cart-btn" data-id="${part.id}" 
+                                        ${part.stock <= 0 ? 'disabled style="background-color: #cccccc; cursor: not-allowed;"' : ''}>
+                                        ${part.stock <= 0 ? 'Out of Stock' : 'Add to Cart'}
+                                    </button>
+                                    <button class="btn view-detail-btn" data-id="${part.id}">View Details</button>
+                                </div>
+                            </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </section>
+            `;
+            
+            // Add event listeners
+            document.querySelectorAll('.view-detail-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const productId = btn.dataset.id;
+                    viewProductDetail(productId);
+                });
+            });
+            
+            document.querySelectorAll('.add-to-cart-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const productId = btn.dataset.id;
+                    addToCart(productId);
+                    if (state.products.find(p => p.id === productId).stock > 0) {
+                        alert('Product added to cart!');
+                    }
+                });
+            });
+        }
+
+        // Render cart page
+        function renderCartPage() {
+            const cartItems = Object.entries(state.cart)
+                .map(([id, quantity]) => {
+                    const product = state.products.find(p => p.id === id) || 
+                                  state.performanceParts.find(p => p.id === id);
+                    if (!product) return null;
+                    
+                    return {
+                        product,
+                        quantity
+                    };
+                })
+                .filter(item => item !== null);
+            
+            const subtotal = cartItems.reduce((sum, item) => 
+                sum + (item.product.price * item.quantity), 0);
+            
+            const shipping = calculateShipping(subtotal);
+            const total = subtotal + shipping;
+            
+            mainContent.innerHTML = `
+                <h1>Your Shopping Cart</h1>
+                ${cartItems.length > 0 ? `<p style="margin-bottom: 15px;">Total items: ${Object.values(state.cart).reduce((a, b) => a + b, 0)}</p>` : ''}
+                
+                <div class="cart-items">
+                    ${cartItems.length > 0 ? 
+                        cartItems.map(item => `
+                            <div class="cart-item">
+                                <img src="${item.product.image}" alt="${item.product.name}" class="cart-item-image">
+                                <div class="cart-item-details">
+                                    <h3>${item.product.name}</h3>
+                                    <div class="item-code">Item Code: ${item.product.itemCode || 'N/A'}</div>
+                                    <div class="cart-item-price">
+                                        MVR${item.product.price.toFixed(2)} x ${item.quantity}
+                                    </div>
+                                    <div class="cart-item-quantity">
+                                        <button class="decrease-qty" data-id="${item.product.id}">-</button>
+                                        <input type="number" value="${item.quantity}" min="1" class="qty-input" data-id="${item.product.id}">
+                                        <button class="increase-qty" data-id="${item.product.id}">+</button>
+                                    </div>
+                                    <button class="btn remove-from-cart-btn" data-id="${item.product.id}">Remove</button>
+                                </div>
+                                <div>
+                                    MVR${(item.product.price * item.quantity).toFixed(2)}
+                                </div>
+                            </div>
+                        `).join('') :
+                        '<p>Your cart is empty.</p>'
+                    }
+                </div>
+                
+                ${cartItems.length > 0 ? `
+                <div class="cart-summary">
+                    <div class="summary-row">
+                        <span>Subtotal:</span>
+                        <span>MVR${subtotal.toFixed(2)}</span>
+                    </div>
+                    <div class="summary-row">
+                        <span>Shipping:</span>
+                        <span>${shipping === 0 ? 'FREE' : `MVR${shipping.toFixed(2)}`}</span>
+                    </div>
+                    ${shipping === 0 ? `
+                    <div class="summary-row">
+                        <span style="color: #4CAF50; font-size: 14px;">
+                            <i class="fas fa-check-circle"></i> Free shipping applied!
+                        </span>
+                    </div>
+                    ` : `
+                    <div class="summary-row">
+                        <span style="font-size: 14px;">
+                            Spend MVR${(state.freeShippingThreshold - subtotal).toFixed(2)} more for free shipping
+                        </span>
+                    </div>
+                    `}
+                    <div class="summary-row summary-total">
+                        <span>Total:</span>
+                        <span>MVR${total.toFixed(2)}</span>
+                    </div>
+                    <button class="btn" id="checkoutBtn" style="width: 100%; margin-top: 20px;">Proceed to Checkout</button>
+                </div>
+                ` : ''}
+            `;
+            
+            // Add event listeners
+            document.querySelectorAll('.remove-from-cart-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const productId = btn.dataset.id;
+                    removeFromCart(productId);
+                });
+            });
+            
+            document.querySelectorAll('.decrease-qty').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const productId = e.target.dataset.id;
+                    const currentQty = state.cart[productId];
+                    if (currentQty > 1) {
+                        updateCartItemQty(productId, currentQty - 1);
+                    } else {
+                        removeFromCart(productId);
+                    }
+                });
+            });
+            
+            document.querySelectorAll('.increase-qty').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const productId = e.target.dataset.id;
+                    const currentQty = state.cart[productId];
+                    updateCartItemQty(productId, currentQty + 1);
+                });
+            });
+            
+            document.querySelectorAll('.qty-input').forEach(input => {
+                input.addEventListener('change', (e) => {
+                    const productId = e.target.dataset.id;
+                    const newQty = parseInt(e.target.value) || 1;
+                    updateCartItemQty(productId, newQty);
+                });
+            });
+            
+            document.getElementById('checkoutBtn')?.addEventListener('click', () => {
+                loadPage('checkout');
+            });
+        }
+
+        // Update cart item quantity
+        function updateCartItemQty(productId, quantity) {
+            const product = state.products.find(p => p.id === productId) || 
+                          state.performanceParts.find(p => p.id === productId);
+            if (!product) return;
+            
+            if (quantity < 1) {
+                removeFromCart(productId);
+                return;
+            }
+            
+            if (product.stock < quantity) {
+                alert(`Only ${product.stock} items available in stock`);
+                return;
+            }
+            
+            state.cart[productId] = quantity;
+            saveCart();
+            updateCartCount();
+            renderCartPage();
+        }
+
+        // Render checkout page
+        function renderCheckoutPage() {
+            const cartItems = Object.entries(state.cart)
+                .map(([id, quantity]) => {
+                    const product = state.products.find(p => p.id === id) || 
+                                  state.performanceParts.find(p => p.id === id);
+                    if (!product) return null;
+                    
+                    return {
+                        product,
+                        quantity
+                    };
+                })
+                .filter(item => item !== null);
+            
+            if (cartItems.length === 0) {
+                loadPage('cart');
+                return;
+            }
+            
+            const subtotal = cartItems.reduce((sum, item) => 
+                sum + (item.product.price * item.quantity), 0);
+            const shipping = calculateShipping(subtotal);
+            const total = subtotal + shipping;
+            
+            // Generate a random order number
+            const orderNumber = 'ORD-' + Math.floor(100000 + Math.random() * 900000);
+            
+            // Save order details to state
+            state.orderDetails = {
+                orderNumber,
+                items: cartItems,
+                subtotal,
+                shipping,
+                total,
+                date: new Date().toLocaleDateString(),
+                status: 'pending'
+            };
+            
+            mainContent.innerHTML = `
+                <h1>Checkout</h1>
+                <p style="margin-bottom: 15px;">Total items: ${Object.values(state.cart).reduce((a, b) => a + b, 0)}</p>
+                
+                <div class="checkout-columns">
+                    <div style="background-color: white; padding: 15px; border-radius: 8px;">
+                        <h2>Shipping Information</h2>
+                        <form id="shippingForm">
+                            <div>
+                                <label>Full Name *</label>
+                                <input type="text" id="fullName" required>
+                            </div>
+                            <div>
+                                <label>Email *</label>
+                                <input type="email" id="email" required>
+                            </div>
+                            <div>
+                                <label>Contact Number *</label>
+                                <input type="tel" id="phone" required>
+                            </div>
+                            <div>
+                                <label>Delivery Address *</label>
+                                <input type="text" id="address" required>
+                            </div>
+                        </form>
+                        
+                        <h2 style="margin-top: 20px;">Payment Method</h2>
+                        
+                        <div class="payment-method selected" id="bankTransferMethod">
+                            <label>
+                                <input type="radio" name="payment" value="bank_transfer" checked>
+                                Bank Transfer
+                            </label>
+                            <div class="payment-method-details">
+                                <div style="margin-top: 10px;">
+                                    <div class="bank-info">
+                                        <p><strong>Bank Name:</strong> Bank Of Maldives</p>
+                                        <p><strong>Account Name:</strong> LAST HUNT</p>
+                                        <p><strong>Account Number:</strong> 7730000345836</p>
+                                        <p><strong>Reference:</strong> ${orderNumber}</p>
+                                    </div>
+                                    <div class="file-upload">
+                                        <label>Upload Payment Slip (Optional)</label>
+                                        <div>
+                                            <label for="paymentSlip" class="file-upload-btn">Choose File</label>
+                                            <span class="file-name" id="fileName">No file chosen</span>
+                                            <input type="file" id="paymentSlip" accept="image/*">
+                                        </div>
+                                    </div>
+                                    <p style="margin: 10px 0;">Please make the payment and proceed to place your order.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <div style="background-color: white; padding: 15px; border-radius: 8px; margin-top: 15px;">
+                            <h2>Order Summary</h2>
+                            ${cartItems.map(item => `
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px;">
+                                    <span>${item.product.name} (${item.product.itemCode || 'N/A'}) x ${item.quantity}</span>
+                                    <span>MVR${(item.product.price * item.quantity).toFixed(2)}</span>
+                                </div>
+                            `).join('')}
+                            
+                            <div style="border-top: 1px solid #eee; margin: 10px 0; padding-top: 10px;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                    <span>Subtotal:</span>
+                                    <span>MVR${subtotal.toFixed(2)}</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                    <span>Shipping:</span>
+                                    <span>${shipping === 0 ? 'FREE' : `MVR${shipping.toFixed(2)}`}</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 16px;">
+                                    <span>Total:</span>
+                                    <span>MVR${total.toFixed(2)}</span>
+                                </div>
+                            </div>
+                            
+                            <button class="btn" id="placeOrderBtn" style="width: 100%;">Place Order</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Handle file upload
+            document.getElementById('paymentSlip')?.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    document.getElementById('fileName').textContent = file.name;
+                    
+                    // Convert image to base64 for storage
+                    const reader = new FileReader();
+                    reader.onload = function(event) {
+                        state.paymentSlip = event.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+                    document.getElementById('fileName').textContent = 'No file chosen';
+                    state.paymentSlip = null;
+                }
+            });
+            
+            document.getElementById('placeOrderBtn').addEventListener('click', () => {
+                if (!document.getElementById('shippingForm').checkValidity()) {
+                    alert('Please fill out all required shipping information.');
+                    return;
+                }
+                
+                // Save shipping info to order details
+                state.orderDetails.shippingInfo = {
+                    name: document.getElementById('fullName').value,
+                    email: document.getElementById('email').value,
+                    phone: document.getElementById('phone').value,
+                    address: document.getElementById('address').value
+                };
+                
+                state.orderDetails.paymentMethod = 'bank_transfer';
+                state.orderDetails.paymentSlip = state.paymentSlip;
+                
+                // Save order to Firebase
+                database.ref('orders').push(state.orderDetails)
+                    .then(() => {
+                        // Update sold count and stock for each product in the order
+                        state.orderDetails.items.forEach(item => {
+                            const productRef = database.ref(`products/${item.product.id}`);
+                            productRef.transaction(product => {
+                                if (product) {
+                                    product.soldCount = (product.soldCount || 0) + item.quantity;
+                                    product.stock = (product.stock || 0) - item.quantity;
+                                    if (product.stock < 0) product.stock = 0;
+                                }
+                                return product;
+                            });
+                        });
+                        
+                        // Clear cart after successful order
+                        state.cart = {};
+                        saveCart();
+                        updateCartCount();
+                        
+                        loadPage('pending-review');
+                    })
+                    .catch(error => {
+                        alert('Error placing order: ' + error.message);
+                    });
+            });
+        }
+
+        // Render pending review page for bank transfers
+        function renderPendingReviewPage() {
+            if (!state.orderDetails) {
+                loadPage('home');
+                return;
+            }
+            
+            mainContent.innerHTML = `
+                <div class="pending-review">
+                    <i class="fas fa-clock"></i>
+                    <h1>Payment Under Review</h1>
+                    <p>Thank you for your order! Your bank transfer payment is being reviewed.</p>
+                    <p>We will notify you by email once your payment is confirmed.</p>
+                    <p>Your order number is: <strong>${state.orderDetails.orderNumber}</strong></p>
+                    
+                    <div class="order-details">
+                        <h3>Order Summary</h3>
+                        <div class="order-details-row">
+                            <div class="order-details-label">Order Date:</div>
+                            <div>${state.orderDetails.date}</div>
+                        </div>
+                        <div class="order-details-row">
+                            <div class="order-details-label">Payment Method:</div>
+                            <div>Bank Transfer</div>
+                        </div>
+                        <div class="order-details-row">
+                            <div class="order-details-label">Total Amount:</div>
+                            <div>MVR${state.orderDetails.total.toFixed(2)}</div>
+                        </div>
+                    </div>
+                    
+                    <button class="btn" id="continueShoppingBtn">Continue Shopping</button>
+                </div>
+            `;
+            
+            document.getElementById('continueShoppingBtn').addEventListener('click', () => {
+                loadPage('home');
+            });
+        }
+
+        // Render order confirmation page
+        function renderOrderConfirmationPage() {
+            if (!state.orderDetails) {
+                loadPage('home');
+                return;
+            }
+            
+            mainContent.innerHTML = `
+                <div class="order-confirmation">
+                    <i class="fas fa-check-circle"></i>
+                    <h1>Order Confirmed!</h1>
+                    <p>Thank you for your purchase. Your order has been confirmed.</p>
+                    <p>We've sent the order details to your email.</p>
+                    <p>Your order number is: <strong>${state.orderDetails.orderNumber}</strong></p>
+                    
+                    <div class="order-details">
+                        <h3>Order Details</h3>
+                        <div class="order-details-row">
+                            <div class="order-details-label">Order Date:</div>
+                            <div>${state.orderDetails.date}</div>
+                        </div>
+                        <div class="order-details-row">
+                            <div class="order-details-label">Payment Method:</div>
+                            <div>Bank Transfer</div>
+                        </div>
+                        <div class="order-details-row">
+                            <div class="order-details-label">Shipping To:</div>
+                            <div>
+                                ${state.orderDetails.shippingInfo.name}<br>
+                                ${state.orderDetails.shippingInfo.address}<br>
+                                Contact: ${state.orderDetails.shippingInfo.phone}
+                            </div>
+                        </div>
+                        <div class="order-details-row">
+                            <div class="order-details-label">Total Amount:</div>
+                            <div>MVR${state.orderDetails.total.toFixed(2)}</div>
+                        </div>
+                    </div>
+                    
+                    <button class="btn" id="continueShoppingBtn">Continue Shopping</button>
+                </div>
+            `;
+            
+            document.getElementById('continueShoppingBtn').addEventListener('click', () => {
+                loadPage('home');
+            });
+        }
+
+        // Add to cart
+        function addToCart(productId, quantity = 1) {
+            const product = state.products.find(p => p.id === productId) || 
+                          state.performanceParts.find(p => p.id === productId);
+            if (!product) return;
+            
+            if (product.stock <= 0) {
+                alert('This product is out of stock');
+                return;
+            }
+            
+            if (product.stock < (state.cart[productId] || 0) + quantity) {
+                alert(`Only ${product.stock} items available in stock`);
+                return;
+            }
+            
+            if (!state.cart[productId]) {
+                state.cart[productId] = 0;
+            }
+            state.cart[productId] += quantity;
+            
+            saveCart();
+            updateCartCount();
+        }
+
+        // Remove from cart
+        function removeFromCart(productId) {
+            delete state.cart[productId];
+            saveCart();
+            updateCartCount();
+            renderCartPage(); // Refresh the cart page
+        }
+
+        // Save cart to localStorage
+        function saveCart() {
+            localStorage.setItem('cart', JSON.stringify(state.cart));
+        }
+
+        // Update cart count
+        function updateCartCount() {
+            const count = Object.values(state.cart).reduce((sum, qty) => sum + qty, 0);
+            cartCount.textContent = count;
+            cartCount.style.display = count > 0 ? 'flex' : 'none';
+        }
+
+        // Initialize the app when DOM is loaded
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
